@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# Logs
+logs/*.jsonl
+logs/*.jsonl.*
+
+# Temp uploads
+temp_uploads/*
+!temp_uploads/.gitkeep
+
+# Models (downloaded automatically)
+models/ecapa_tdnn/*.ckpt
+models/ecapa_tdnn/*.yaml
+
+# Audio files
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.m4a
+*.aac
+*.wma
+registro/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+registro/
+models/
+temp_uploads/

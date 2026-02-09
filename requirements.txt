@@ -1,0 +1,42 @@
+# DPS Voice Manager - Dependencias
+# ===================================
+# Python 3.9+ | CUDA 12.1 recomendado
+# Instalar: pip install -r requirements.txt
+
+# ---------- Web Framework ----------
+fastapi==0.128.5
+uvicorn[standard]==0.39.0
+python-multipart==0.0.20
+websockets==15.0.1
+
+# ---------- HTTP / IO ----------
+httpx==0.28.1
+aiofiles==25.1.0
+
+# ---------- Speaker Diarization ----------
+# Requiere HF_TOKEN con acceso aceptado en:
+#   https://huggingface.co/pyannote/speaker-diarization-3.1
+#   https://huggingface.co/pyannote/segmentation-3.0
+pyannote.audio==3.4.0
+
+# ---------- Speaker Embedding (ECAPA-TDNN 192d) ----------
+# Modelo: speechbrain/spkrec-ecapa-voxceleb
+speechbrain==1.0.3
+
+# ---------- Deep Learning ----------
+# CUDA 12.1 — instalar desde: https://download.pytorch.org/whl/cu121
+torch==2.5.1
+torchaudio==2.5.1
+
+# ---------- Audio Processing ----------
+soundfile==0.13.1
+librosa==0.11.0
+
+# ---------- Numerical ----------
+numpy==2.0.2
+
+# ---------- Data Validation ----------
+pydantic==2.12.5
+
+# ---------- Environment ----------
+python-dotenv==1.2.1
