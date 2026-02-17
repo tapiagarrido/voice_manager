@@ -201,22 +201,16 @@ Respuesta:
 
 ```json
 {
-
-| **pyannote.audio** | 3.4.0 | Pipeline de speaker diarization. Segmenta audio por hablante usando modelos neuronales. Requiere token de HuggingFace. |  "segments": [
-
+  "segments": [
     {"start": 0.5, "end": 12.3, "speaker": "Juan Pérez", "confidence": 0.87, "role": "periodista"},
-
-> ⚠️ **HuggingFace Token:** Se necesita `HF_TOKEN` con acceso aceptado en:    {"start": 12.5, "end": 25.1, "speaker": "SPEAKER_01", "confidence": 0},
-
-> - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)    {"start": 25.3, "end": 45.0, "speaker": "Juan Pérez", "confidence": 0.87, "role": "periodista"}
-
-> - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)  ],
-
->  "speakers": {
-
-> Aceptar las condiciones de uso en cada página antes de usar el servicio.    "Juan Pérez": {"person_id": "abc12345", "similarity": 0.87, "total_time": 56.8, "identified": true},
-
-    "SPEAKER_01": {"total_time": 12.6, "identified": false}  "total_speakers": 2,
+    {"start": 12.5, "end": 25.1, "speaker": "SPEAKER_01", "confidence": 0},
+    {"start": 25.3, "end": 45.0, "speaker": "Juan Pérez", "confidence": 0.87, "role": "periodista"}
+  ],
+  "speakers": {
+    "Juan Pérez": {"person_id": "abc12345", "similarity": 0.87, "total_time": 56.8, "identified": true},
+    "SPEAKER_01": {"total_time": 12.6, "identified": false}
+  },
+  "total_speakers": 2,
   "identified_speakers": 1,
   "unidentified_speakers": 1
 }
@@ -327,6 +321,12 @@ dps_voice_manager/
 |----------|---------|-------------|
 | **pyannote.audio** | 3.3.2 | Pipeline de diarización de speakers. Usa modelos preentrenados de Hugging Face. |
 | **pyannote.core** | 5.0.0 | Estructuras de datos para segmentos temporales (Annotation, Segment). |
+
+> ⚠️ **HuggingFace Token:** Se necesita `HF_TOKEN` con acceso aceptado en:
+> - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+> - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+> 
+> Aceptar las condiciones de uso en cada página antes de usar el servicio.
 
 ### Embeddings de Voz — SpeechBrain
 
