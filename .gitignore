@@ -47,3 +47,4 @@ Thumbs.db
 registro/
 models/
 temp_uploads/
+.env.save
