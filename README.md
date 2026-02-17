@@ -6,245 +6,201 @@ Servicio de gestión de voces para diarización e identificación de speakers. R
 
 > 🎉 **Recientemente refactorizado** - El código ha sido reorganizado en una arquitectura modular (de 1,305 a 178 líneas en main.py). Ver [`REFACTORING.md`](REFACTORING.md) y [`ARCHITECTURE.md`](ARCHITECTURE.md) para detalles.
 
+---
 
-
----## Arquitectura
-
-
-
-## Arquitectura```
-
-Audio → Pyannote 3.1 (Diarización) → Segmentos por speaker (SPEAKER_00, SPEAKER_01...)
-
-```                                            ↓
-
-┌──────────────────────────────────────────────────────────────────────┐                                    ECAPA-TDNN (Embedding 192d)
-
-│                        DPS Voice Manager (:3010)                     │                                            ↓
-
-│                                                                      │                                    Elasticsearch (cosine similarity)
-
-│  ┌────────────┐    ┌──────────────────┐    ┌─────────────────────┐  │                                            ↓
-
-│  │  FastAPI    │───▶│  Diarization Svc  │───▶│  Voice Embedding    │  │                                    "Juan Pérez" (sim=0.87) ✅
-
-│  │  + WebUI    │    │  (Pyannote 3.1)   │    │  Service            │  │```
-
-│  └─────┬──────┘    └────────┬─────────┘    │  (ECAPA-TDNN 192d)  │  │
-
-│        │                    │               └──────────┬──────────┘  │### Modelos
-
-│        │                    ▼                          │             │
-
-│        │           Segmentos por speaker               │             │| Modelo | Uso | Dims | VRAM |
-
-│        │           (SPEAKER_00, 01...)                 ▼             │|--------|-----|------|------|
-
-│        │                    │               Embedding por speaker    │| `pyannote/speaker-diarization-3.1` | Segmentación por speaker | - | ~1GB |
-
-│        │                    ▼                          │             │| `speechbrain/spkrec-ecapa-voxceleb` | Embeddings de voz | 192 | ~0.5GB |
-
-│        │           ┌──────────────────┐               │             │
-
-│        └──────────▶│  Elasticsearch    │◀──────────────┘             │### Flujo
-
-│                    │  Service          │                             │
-
-│                    │  (cosine search)  │                             │1. **Registro**: Subir clips de audio de un locutor conocido → se extrae embedding promedio → se guarda en Elasticsearch con nombre, rol, aliases
-
-│                    └──────────────────┘                              │2. **Diarización**: Enviar audio largo → Pyannote segmenta por speakers → para cada speaker se extrae embedding → se compara contra banco → se etiqueta con nombre real si match > threshold
-
-└──────────────────────────────────────────────────────────────────────┘3. **Integración**: `dps_audio_processor` envía audio vía HTTP → recibe segmentos con speakers identificados → los alinea con los segmentos de Whisper → cada línea de transcripción tiene `speaker: "Nombre"`
-
-                              │
-
-                              ▼## Setup
-
-                     Elasticsearch 8.x
-
-                     Índice: voice_persons### Requisitos
-
-                     dense_vector (192d, cosine)
-
-```- Python 3.10+
-
-- CUDA (recomendado, funciona en CPU pero lento)
-
-### Flujo de Registro- `ffmpeg` instalado
-
-- Token de HuggingFace (`HF_TOKEN`) con acceso a:
-
-```  - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
-
-Clips de audio ──▶ Pyannote (diarización) ──▶ Aislar speaker dominante  - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
-
-                                                        │
-
-                                    Concatenar waveforms del speaker ◀──┘### Instalación
-
-                                                        │
-
-                                              ECAPA-TDNN (embedding 192d)```bash
-
-                                                        │# Configurar HF_TOKEN
-
-                                              Elasticsearch (guardar)echo "HF_TOKEN=hf_xxxxxxxxxxxxx" > dps_voice_manager/.env
+## Arquitectura
 
 ```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        DPS Voice Manager (:3010)                     │
+│                                                                      │
+│  ┌────────────┐    ┌──────────────────┐    ┌─────────────────────┐  │
+│  │  FastAPI    │───▶│  Diarization Svc  │───▶│  Voice Embedding    │  │
+│  │  + WebUI    │    │  (Pyannote 3.1)   │    │  Service            │  │
+│  └─────┬──────┘    └────────┬─────────┘    │  (ECAPA-TDNN 192d)  │  │
+│        │                    │               └──────────┬──────────┘  │
+│        │                    ▼                          │             │
+│        │           Segmentos por speaker               │             │
+│        │           (SPEAKER_00, 01...)                 ▼             │
+│        │                    │               Embedding por speaker    │
+│        │                    ▼                          │             │
+│        │           ┌──────────────────┐               │             │
+│        └──────────▶│  Elasticsearch    │◀──────────────┘             │
+│                    │  Service          │                             │
+│                    │  (cosine search)  │                             │
+│                    └──────────────────┘                              │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                     Elasticsearch 8.x
+                     Índice: voice_persons
+                     dense_vector (192d, cosine)
+```
 
-# Ejecutar setup
+### Pipeline
 
-1. Se reciben 1-10 clips de audio de un locutorcd dps_voice_manager
+```
+Audio → Pyannote 3.1 (Diarización) → Segmentos por speaker (SPEAKER_00, SPEAKER_01...)
+                                            ↓
+                                    ECAPA-TDNN (Embedding 192d)
+                                            ↓
+                                    Elasticsearch (cosine similarity)
+                                            ↓
+                                    "Juan Pérez" (sim=0.87) ✅
+```
 
-2. Cada clip se diariza para aislar al **speaker dominante** (evita contaminación por otros hablantes)chmod +x setup.sh
+### Modelos
 
-3. Se concatenan los waveforms del speaker dominante de todos los clips./setup.sh
+| Modelo | Uso | Dims | VRAM |
+|--------|-----|------|------|
+| `pyannote/speaker-diarization-3.1` | Segmentación por speaker | - | ~1GB |
+| `speechbrain/spkrec-ecapa-voxceleb` | Embeddings de voz | 192 | ~0.5GB |
 
-4. Se extrae **un solo embedding** del audio concatenado → alta calidad```
+### Flujo
 
+1. **Registro**: Subir clips de audio de un locutor conocido → se extrae embedding promedio → se guarda en Elasticsearch con nombre, rol, aliases
+2. **Diarización**: Enviar audio largo → Pyannote segmenta por speakers → para cada speaker se extrae embedding → se compara contra banco → se etiqueta con nombre real si match > threshold
+3. **Integración**: `dps_audio_processor` envía audio vía HTTP → recibe segmentos con speakers identificados → los alinea con los segmentos de Whisper → cada línea de transcripción tiene `speaker: "Nombre"`
+
+---
+
+## Setup
+
+### Requisitos
+
+- Python 3.10+
+- CUDA (recomendado, funciona en CPU pero lento)
+- `ffmpeg` instalado
+- Token de HuggingFace (`HF_TOKEN`) con acceso a:
+  - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+  - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+
+### Flujo de Registro
+
+```
+Clips de audio ──▶ Pyannote (diarización) ──▶ Aislar speaker dominante
+                                                        │
+                                    Concatenar waveforms del speaker ◀──┘
+                                                        │
+                                              ECAPA-TDNN (embedding 192d)
+                                                        │
+                                              Elasticsearch (guardar)
+```
+
+1. Se reciben 5 clips mínimos de audio en buena calidad, específicamente deben ser clips solo del hablante específico
+2. Cada clip se diariza para aislar al **speaker dominante** (evita contaminación por otros hablantes)
+3. Se concatenan los waveforms del speaker dominante de todos los clips
+4. Se extrae **un solo embedding** del audio concatenado → alta calidad
 5. Se guarda en Elasticsearch con nombre, rol y aliases
-
-### Iniciar
 
 ### Flujo de Identificación
 
-```bash
-
-```source ../venvs/voice_manager/bin/activate
-
-Audio largo ──▶ Pyannote (diarización) ──▶ Segmentos por speakercd dps_voice_manager
-
-                                                    │python main.py
-
-                              Para cada speaker: ◀──┘```
-
+```
+Audio largo ──▶ Pyannote (diarización) ──▶ Segmentos por speaker
+                                                    │
+                              Para cada speaker: ◀──┘
                               Concatenar waveforms (≥0.5s c/u)
-
-                                                    │El servicio estará en `http://localhost:3010`
-
+                                                    │
                                           ECAPA-TDNN (embedding)
-
-                                                    │## API Endpoints
-
+                                                    │
                                           Elasticsearch (cosine search)
-
-                                                    │### Voice Bank (CRUD)
-
+                                                    │
                                     sim ≥ 0.45 → "Tomás Mosciatti" ✅
-
-                                    sim < 0.35 → "SPEAKER_02" (desconocido)| Método | Ruta | Descripción |
-
-```|--------|------|-------------|
-
-| `GET` | `/api/health` | Health check con estado de subsistemas |
-
-1. Pyannote segmenta el audio por speaker (labels anónimos)| `GET` | `/api/persons` | Listar voces registradas |
-
-2. Para cada speaker se **concatenan los waveforms** de todos sus segmentos (≥0.5s cada uno)| `GET` | `/api/persons/{id}` | Obtener detalle de persona |
-
-3. Se extrae un embedding del audio concatenado| `PUT` | `/api/persons/{id}` | Actualizar nombre/aliases/rol |
-
-4. Se busca en Elasticsearch por similitud coseno| `DELETE` | `/api/persons/{id}` | Eliminar persona |
-
-5. Si supera el umbral → se reemplaza el label anónimo por el nombre real| `POST` | `/api/search` | Buscar por nombre/alias (fuzzy) |
-
-| `POST` | `/api/register` | Registrar voz con clips de audio |
-
----| `GET` | `/api/roles` | Roles disponibles |
-
-
-
-## Estructura del Proyecto### Diarización
-
-
-
-```| Método | Ruta | Descripción |
-
-dps_voice_manager/|--------|------|-------------|
-
-├── config.py                      # Configuración centralizada| `POST` | `/api/diarize` | Diarizar audio + identificar speakers |
-
-├── main.py                        # FastAPI app + endpoints| `POST` | `/api/identify-speaker` | Identificar speaker en clip corto |
-
-├── requirements.txt               # Dependencias con versiones fijas
-
-├── setup.sh                       # Script de instalación automática### UI Web
-
-├── .env                           # Variables de entorno (HF_TOKEN, etc.)
-
-├── services/| Ruta | Descripción |
-
-│   ├── __init__.py|------|-------------|
-
-│   ├── diarization_service.py     # Diarización + identificación (Pyannote)| `GET /` | Interfaz web completa (registro, lista, test) |
-
-│   ├── voice_embedding_service.py # Embeddings de voz (ECAPA-TDNN)| `WS /ws/progress/{id}` | WebSocket para progreso de registro |
-
-│   └── elasticsearch_service.py   # CRUD banco de voces (ES 8.x)
-
-├── models/## Registro de voz
-
-│   └── ecapa_tdnn/                # Modelo descargado (auto en primer uso)
-
-│       ├── embedding_model.ckpt```bash
-
-│       ├── classifier.ckpt# Registrar con 3 clips de audio
-
-│       ├── hyperparams.yamlcurl -X POST http://localhost:3010/api/register \
-
-│       ├── label_encoder.ckpt  -F "name=Juan Pérez" \
-
-│       └── mean_var_norm_emb.ckpt  -F "role=periodista" \
-
-├── static/  -F "aliases=Juanito,JP" \
-
-│   ├── index.html                 # UI web para gestión  -F "audio_files=@clip1.wav" \
-
-│   └── functions.js               # Lógica frontend  -F "audio_files=@clip2.wav" \
-
-├── temp_uploads/                  # Archivos temporales (auto-limpieza)  -F "audio_files=@clip3.wav"
-
-├── logs/                          # Logs en formato JSONL (rotación 10MB)```
-
-└── registro/                      # Clips de audio para registro manual
-
-```**Recomendaciones para clips:**
-
-- Duración: 10-30 segundos cada uno
-
----- Solo la persona hablando (sin otros speakers)
-
-- Audio limpio, sin mucha música de fondo
-
-## Librerías y Dependencias- 3-5 clips de diferentes contextos dan mejor resultado
-
-
-
-### Core — Deep Learning## Diarización
-
-
-
-| Librería | Versión | Descripción |```bash
-
-|----------|---------|-------------|# Diarizar y identificar
-
-| **torch** | 2.5.1+cu121 | Framework de deep learning (PyTorch). Requerido por Pyannote y SpeechBrain. Usar build CUDA 12.1. |curl -X POST http://localhost:3010/api/diarize \
-
-| **torchaudio** | 2.5.1+cu121 | Procesamiento de audio con PyTorch. Carga, resampleo y manipulación de waveforms. |  -F "audio=@noticiario.wav" \
-
-  -F "identify=true" \
-
-> ⚠️ **CUDA:** Instalar PyTorch con soporte CUDA desde `https://download.pytorch.org/whl/cu121`. Sin GPU el servicio funciona pero es significativamente más lento.  -F "threshold=0.70"
-
+                                    sim < 0.35 → "SPEAKER_02" (desconocido)
 ```
 
-### Diarización — Pyannote
+1. Pyannote segmenta el audio por speaker (labels anónimos)
+2. Para cada speaker se **concatenan los waveforms** de todos sus segmentos (≥0.5s cada uno)
+3. Se extrae un embedding del audio concatenado
+4. Se busca en Elasticsearch por similitud coseno
+
+### Instalación
+
+```bash
+# Configurar HF_TOKEN
+echo "HF_TOKEN=hf_xxxxxxxxxxxxx" > dps_voice_manager/.env
+
+# Ejecutar setup
+chmod +x setup.sh
+./setup.sh
+```
+
+### Iniciar
+
+```bash
+source ../venvs/voice_manager/bin/activate
+cd dps_voice_manager
+python main.py
+```
+
+El servicio estará en `http://localhost:3010`
+
+---
+
+## API Endpoints
+
+### Voice Bank (CRUD)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check con estado de subsistemas |
+| `GET` | `/api/persons` | Listar voces registradas |
+| `GET` | `/api/persons/{id}` | Obtener detalle de persona |
+| `PUT` | `/api/persons/{id}` | Actualizar nombre/aliases/rol |
+| `DELETE` | `/api/persons/{id}` | Eliminar persona |
+| `POST` | `/api/search` | Buscar por nombre/alias (fuzzy) |
+| `POST` | `/api/register` | Registrar voz con clips de audio |
+| `GET` | `/api/roles` | Roles disponibles |
+
+### Diarización
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/api/diarize` | Diarizar audio + identificar speakers |
+| `POST` | `/api/identify-speaker` | Identificar speaker en clip corto |
+
+### UI Web
+
+| Ruta | Descripción |
+|------|-------------|
+| `GET /` | Interfaz web completa (registro, lista, test) |
+| `WS /ws/progress/{id}` | WebSocket para progreso de registro |
+
+---
+
+## Registro de voz
+
+```bash
+# Registrar con 3 clips de audio
+curl -X POST http://localhost:3010/api/register \
+  -F "name=Juan Pérez" \
+  -F "role=periodista" \
+  -F "aliases=Juanito,JP" \
+  -F "audio_files=@clip1.wav" \
+  -F "audio_files=@clip2.wav" \
+  -F "audio_files=@clip3.wav"
+```
+
+**Recomendaciones para clips:**
+- Duración: 10-30 segundos cada uno
+- Solo la persona hablando (sin otros speakers)
+- Audio limpio, sin mucha música de fondo
+- 3-5 clips de diferentes contextos dan mejor resultado
+
+## Diarización
+
+```bash
+# Diarizar y identificar
+curl -X POST http://localhost:3010/api/diarize \
+  -F "audio=@noticiario.wav" \
+  -F "identify=true" \
+  -F "threshold=0.70"
+```
 
 Respuesta:
 
-| Librería | Versión | Descripción |```json
-
-|----------|---------|-------------|{
+```json
+{
 
 | **pyannote.audio** | 3.4.0 | Pipeline de speaker diarization. Segmenta audio por hablante usando modelos neuronales. Requiere token de HuggingFace. |  "segments": [
 
@@ -260,98 +216,163 @@ Respuesta:
 
 > Aceptar las condiciones de uso en cada página antes de usar el servicio.    "Juan Pérez": {"person_id": "abc12345", "similarity": 0.87, "total_time": 56.8, "identified": true},
 
-    "SPEAKER_01": {"total_time": 12.6, "identified": false}
-
-### Embeddings de Voz — SpeechBrain  },
-
-  "total_speakers": 2,
-
-| Librería | Versión | Descripción |  "identified_speakers": 1,
-
-|----------|---------|-------------|  "unidentified_speakers": 1
-
-| **speechbrain** | 1.0.3 | Toolkit de speech processing. Se usa el modelo ECAPA-TDNN para extraer embeddings de 192 dimensiones que representan la identidad vocal del hablante. |}
-
+    "SPEAKER_01": {"total_time": 12.6, "identified": false}  "total_speakers": 2,
+  "identified_speakers": 1,
+  "unidentified_speakers": 1
+}
 ```
 
-> El modelo `speechbrain/spkrec-ecapa-voxceleb` se descarga automáticamente en `models/ecapa_tdnn/` en el primer uso.
+---
 
 ## Integración con Audio Processor
 
-### Audio
-
 El `dps_audio_processor` (puerto 3009) se comunica automáticamente con este servicio. Cuando el voice manager está corriendo:
 
-| Librería | Versión | Descripción |
-
-|----------|---------|-------------|1. Audio Processor recibe un audio para analizar
-
-| **soundfile** | 0.13.1 | Lectura/escritura de archivos de audio (WAV, FLAC, OGG). Backend de torchaudio. |2. Whisper transcribe → segmentos con texto y timestamps
-
-| **librosa** | 0.11.0 | Análisis de audio: duración, resampleo, detección de actividad vocal (VAD). |3. **Nuevo:** El audio se envía a Voice Manager vía HTTP
-
+1. Audio Processor recibe un audio para analizar
+2. Whisper transcribe → segmentos con texto y timestamps
+3. **Nuevo:** El audio se envía a Voice Manager vía HTTP
 4. Voice Manager diariza e identifica speakers
-
-### Web Framework5. Audio Processor alinea temporalmente los speakers con la transcripción
-
+5. Audio Processor alinea temporalmente los speakers con la transcripción
 6. Cada segmento de transcripción tiene campo `speaker` con el nombre
 
-| Librería | Versión | Descripción |
+Si Voice Manager no está corriendo, el pipeline sigue funcionando sin diarización (graceful fallback).
 
-|----------|---------|-------------|Si Voice Manager no está corriendo, el pipeline sigue funcionando sin diarización (graceful fallback).
+---
 
-| **fastapi** | 0.128.5 | Framework web async para la API REST y WebSocket. |
+## Elasticsearch
 
-| **uvicorn** | 0.39.0 | Servidor ASGI para FastAPI. |## Elasticsearch
+**Índice:** `voice_persons`
 
-| **python-multipart** | 0.0.20 | Parsing de formularios multipart (upload de archivos de audio). |
-
-| **websockets** | 15.0.1 | Soporte WebSocket para notificaciones de progreso en tiempo real. |**Índice:** `voice_persons`
-
-
-
-### HTTP / IO| Campo | Tipo | Descripción |
-
+| Campo | Tipo | Descripción |
 |-------|------|-------------|
-
-| Librería | Versión | Descripción || `person_id` | keyword | UUID corto |
-
-|----------|---------|-------------|| `name` | text + keyword | Nombre completo |
-
-| **httpx** | 0.28.1 | Cliente HTTP sync/async. Usado para comunicación directa con Elasticsearch. || `aliases` | text + keyword | Nombres alternativos |
-
-| **aiofiles** | 25.1.0 | IO asíncrono de archivos para escritura de uploads sin bloquear el event loop. || `role` | keyword | Rol (locutor, periodista, etc.) |
-
+| `person_id` | keyword | UUID corto |
+| `name` | text + keyword | Nombre completo |
+| `aliases` | text + keyword | Nombres alternativos |
+| `role` | keyword | Rol (locutor, periodista, etc.) |
 | `embedding` | dense_vector(192) | Vector de voz ECAPA-TDNN |
-
-### Utilidades| `sample_count` | integer | Clips usados |
-
+| `sample_count` | integer | Clips usados |
 | `total_speech_duration` | float | Segundos totales de habla |
 
-| Librería | Versión | Descripción |
+---
 
-|----------|---------|-------------|## Configuración
+## Configuración
 
-| **numpy** | 2.0.2 | Operaciones numéricas sobre embeddings (normalización, promedios). |
-
-| **pydantic** | 2.12.5 | Validación de datos en modelos de request/response de FastAPI. |Variables de entorno (`.env`):
-
-| **python-dotenv** | 1.2.1 | Carga variables de entorno desde archivo `.env`. |
+Variables de entorno (`.env`):
 
 ```env
-
-### Dependencias del SistemaHF_TOKEN=hf_xxxxxxxxxxxxx          # Requerido para Pyannote
-
+HF_TOKEN=hf_xxxxxxxxxxxxx          # Requerido para Pyannote
 VOICE_MANAGER_PORT=3010             # Puerto del servicio
+ELASTICSEARCH_HOST=http://localhost:9200
+VOICE_DEVICE=cuda                   # cuda o cpu
+VOICE_SIMILARITY_THRESHOLD=0.70     # Umbral de match (0.0-1.0)
+```
 
-| Herramienta | Descripción |ELASTICSEARCH_HOST=http://localhost:9200
+---
 
-|-------------|-------------|VOICE_DEVICE=cuda                   # cuda o cpu
+## Estructura del Proyecto
 
-| **ffmpeg** | Decodificación de audio (MP3, AAC, etc.). Requerido por torchaudio/librosa. |VOICE_SIMILARITY_THRESHOLD=0.70     # Umbral de match (0.0-1.0)
+```
+dps_voice_manager/
+├── main.py                        # Entrada principal (178 líneas)
+├── config.py                      # Configuración centralizada
+├── requirements.txt               # Dependencias con versiones fijas
+├── setup.sh                       # Script de instalación automática
+├── .env                           # Variables de entorno (HF_TOKEN, etc.)
+├── api/
+│   └── routers/                   # Routers organizados por dominio
+│       ├── health.py              # Health check + roles
+│       ├── persons.py             # CRUD de personas
+│       ├── search.py              # Búsqueda
+│       ├── voice_registration.py # Registro de voces
+│       └── diarization.py         # Diarización e identificación
+├── models/
+│   ├── schemas.py                 # Modelos Pydantic
+│   └── ecapa_tdnn/                # Modelo descargado (auto en primer uso)
+│       ├── embedding_model.ckpt
+│       ├── classifier.ckpt
+│       ├── hyperparams.yaml
+│       ├── label_encoder.ckpt
+│       └── mean_var_norm_emb.ckpt
+├── services/
+│   ├── diarization_service.py     # Diarización + identificación (Pyannote)
+│   ├── voice_embedding_service.py # Embeddings de voz (ECAPA-TDNN)
+│   ├── elasticsearch_service.py   # CRUD banco de voces (ES 8.x)
+│   └── websocket_service.py       # WebSocket en tiempo real
+├── utils/
+│   └── validators.py              # Validaciones de audio
+├── static/
+│   ├── index.html                 # UI web para gestión
+│   └── functions.js               # Lógica frontend
+├── temp_uploads/                  # Archivos temporales (auto-limpieza)
+├── logs/                          # Logs en formato JSONL (rotación 10MB)
+└── registro/                      # Clips de audio para registro manual
+```
 
-| **Elasticsearch 8.x** | Motor de búsqueda vectorial para el banco de voces. |```
+---
 
+## Librerías y Dependencias
+
+### Core — Deep Learning
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **torch** | 2.5.1+cu121 | Framework de deep learning (PyTorch). Requerido por Pyannote y SpeechBrain. Usar build CUDA 12.1. |
+| **torchaudio** | 2.5.1+cu121 | Procesamiento de audio con PyTorch. Carga, resampleo y manipulación de waveforms. |
+
+> ⚠️ **CUDA:** Instalar PyTorch con soporte CUDA desde `https://download.pytorch.org/whl/cu121`. Sin GPU el servicio funciona pero es significativamente más lento.
+
+### Diarización — Pyannote
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **pyannote.audio** | 3.3.2 | Pipeline de diarización de speakers. Usa modelos preentrenados de Hugging Face. |
+| **pyannote.core** | 5.0.0 | Estructuras de datos para segmentos temporales (Annotation, Segment). |
+
+### Embeddings de Voz — SpeechBrain
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **speechbrain** | 1.0.3 | Toolkit de speech processing. Se usa el modelo ECAPA-TDNN para extraer embeddings de 192 dimensiones que representan la identidad vocal del hablante. |
+
+> El modelo `speechbrain/spkrec-ecapa-voxceleb` se descarga automáticamente en `models/ecapa_tdnn/` en el primer uso.
+
+### Audio
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **soundfile** | 0.13.1 | Lectura/escritura de archivos de audio (WAV, FLAC, OGG). Backend de torchaudio. |
+| **librosa** | 0.11.0 | Análisis de audio: duración, resampleo, detección de actividad vocal (VAD). |
+
+### Web Framework
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **fastapi** | 0.128.5 | Framework web async para la API REST y WebSocket. |
+| **uvicorn** | 0.39.0 | Servidor ASGI para FastAPI. |
+| **python-multipart** | 0.0.20 | Parsing de formularios multipart (upload de archivos de audio). |
+| **websockets** | 15.0.1 | Soporte WebSocket para notificaciones de progreso en tiempo real. |
+
+### HTTP / IO
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **httpx** | 0.28.1 | Cliente HTTP sync/async. Usado para comunicación directa con Elasticsearch. |
+| **aiofiles** | 25.1.0 | IO asíncrono de archivos para escritura de uploads sin bloquear el event loop. |
+
+### Utilidades
+
+| Librería | Versión | Descripción |
+|----------|---------|-------------|
+| **numpy** | 2.0.2 | Operaciones numéricas sobre embeddings (normalización, promedios). |
+| **pydantic** | 2.12.5 | Validación de datos en modelos de request/response de FastAPI. |
+| **python-dotenv** | 1.2.1 | Carga variables de entorno desde archivo `.env`. |
+
+### Dependencias del Sistema
+
+| Herramienta | Descripción |
+|-------------|-------------|
+| **ffmpeg** | Decodificación de audio (MP3, AAC, etc.). Requerido por torchaudio/librosa. |
+| **Elasticsearch 8.x** | Motor de búsqueda vectorial para el banco de voces. |
 | **CUDA Toolkit 12.1** | Aceleración GPU (opcional pero muy recomendado). |
 
 ---
