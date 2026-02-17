@@ -1,12 +1,10 @@
-# DPS Voice Manager# DPS Voice Manager
+# DPS Voice Manager
 
+**Puerto:** 3010 · **Python:** 3.9+ · **GPU:** CUDA 12.1 recomendado
 
+Servicio de gestión de voces para diarización e identificación de speakers. Registra locutores conocidos en un banco de voces (embeddings vectoriales 192d) y los identifica automáticamente cuando aparecen en nuevos audios.
 
-**Puerto:** 3010 · **Python:** 3.9+ · **GPU:** CUDA 12.1 recomendado**Puerto:** 3010
-
-
-
-Servicio de gestión de voces para diarización e identificación de speakers. Registra locutores conocidos en un banco de voces (embeddings vectoriales 192d) y los identifica automáticamente cuando aparecen en nuevos audios.Servicio de gestión de voces para diarización e identificación de speakers. Permite registrar locutores conocidos en un banco de voces (embeddings vectoriales) y luego identificarlos automáticamente cuando aparecen en nuevos audios.
+> 🎉 **Recientemente refactorizado** - El código ha sido reorganizado en una arquitectura modular (de 1,305 a 178 líneas en main.py). Ver [`REFACTORING.md`](REFACTORING.md) y [`ARCHITECTURE.md`](ARCHITECTURE.md) para detalles.
 
 
 

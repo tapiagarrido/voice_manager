@@ -291,14 +291,9 @@ class DiarizationService:
         
         for speaker_label, segs in speaker_segments.items():
             total_time = sum(s["duration"] for s in segs)
-            
-            # Usar TODOS los segmentos del speaker para concatenación de waveforms.
-            # Incluir segmentos >= 0.5s ya que serán concatenados para formar un audio
-            # más largo. El filtro de duración mínima total se aplica después en el
-            # método de extracción de embedding.
+
             sorted_segs = sorted(segs, key=lambda s: s["duration"], reverse=True)
             
-            # Mínimo 0.5s por segmento para concatenación (no necesitan ser largos)
             MIN_SEG_FOR_CONCAT = 0.5
             best_segments = [
                 (s["start"], s["end"]) 
